@@ -1,0 +1,10 @@
+services:
+  profit-agent-demo:
+    build: .
+    ports:
+      - "8510:8510"
+    env_file:
+      - .env
+    environment:
+      STREAMLIT_PORT: "8510"
+    restart: unless-stopped

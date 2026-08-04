@@ -1,0 +1,147 @@
+version: 1
+relation: schema.profit_daily
+parameters:
+  - name: DS_START_DATE
+    type: date
+  - name: DS_END_DATE
+    type: date
+fields:
+  product_id:
+    display_name: 상품코드
+    kind: dimension
+    aliases: [상품코드, 상품 ID]
+  item_id:
+    display_name: 대표상품코드
+    kind: dimension
+    aliases: [대표상품코드, 대표 상품 코드]
+  item_seq:
+    display_name: 순번
+    kind: dimension
+    aliases: [순번]
+  team_name:
+    display_name: 담당팀
+    kind: dimension
+    aliases: [담당팀]
+  brand_name:
+    display_name: 브랜드명
+    kind: dimension
+    aliases: [브랜드, 브랜드명]
+    description: 고정된 목록이 아니라 신규 브랜드가 추가될 수 있는 차원
+  category_name1:
+    display_name: 대분류
+    kind: dimension
+    aliases: [대분류]
+  category_name2:
+    display_name: 중분류
+    kind: dimension
+    aliases: [중분류]
+  category_name3:
+    display_name: 소분류
+    kind: dimension
+    aliases: [소분류, 대표상품분류]
+  category_name4:
+    display_name: 세분류
+    kind: dimension
+    aliases: [세분류, SKU분류]
+  color:
+    display_name: 색상
+    kind: dimension
+    aliases: [색상]
+  product_name:
+    display_name: 상품명
+    kind: dimension
+    aliases: [상품명]
+  category_unit_name:
+    display_name: 단위가 포함된 상품명
+    kind: dimension
+    aliases: [단위상품명]
+  shop_id:
+    display_name: 판매처코드
+    kind: dimension
+    aliases: [판매처코드, 판매처 코드]
+  shop_group:
+    display_name: 쇼핑몰 그룹
+    kind: dimension
+    aliases: [쇼핑몰, 쇼핑몰 그룹]
+  shop_name:
+    display_name: 채널
+    kind: dimension
+    aliases: [판매처, 채널, 쇼핑몰명]
+  order_status:
+    display_name: 주문상태
+    kind: dimension
+    aliases: [주문상태]
+  order_date:
+    display_name: 주문일
+    kind: dimension
+    aliases: [날짜, 일자, 주문일]
+  unit_quantity:
+    display_name: 세트수량
+    kind: metric
+    aliases: [세트수량, 박스수량]
+    aggregation: sum
+    description: 낱개 상품을 제외한 세트 또는 박스 상품의 수량
+  sku_quantity:
+    display_name: 확정수량
+    kind: metric
+    aliases: [확정수량, 판매수량]
+    aggregation: sum
+    description: SKU 기준으로 집계되는 확정된 수량
+  payment_amount:
+    display_name: 결제금액
+    kind: metric
+    aliases: [결제금액, 매출]
+    aggregation: sum
+  supply_amount:
+    display_name: 정산금액
+    kind: metric
+    aliases: [정산금액]
+    aggregation: sum
+    description: 결제금액에서 수수료를 제외한 금액
+  supply_cost:
+    display_name: 원가*수량
+    kind: metric
+    aliases: [원가*수량, 공급원가, 원가]
+    aggregation: sum
+  delivery_fee:
+    display_name: 배송비
+    kind: metric
+    aliases: [배송비]
+    aggregation: sum
+  margin_amount:
+    display_name: 마진금액
+    kind: metric
+    aliases: [마진금액, 마진]
+    aggregation: sum
+    formula: supply_amount - supply_cost - delivery_fee
+  ad_cost:
+    display_name: 광고비
+    kind: metric
+    aliases: [광고비]
+    aggregation: sum
+  extra_cost:
+    display_name: 지출액
+    kind: metric
+    aliases: [지출액, 추가비용, 비용, 고정지출]
+    aggregation: sum
+    description: 광고비를 제외한 비용
+  profit:
+    display_name: 영업이익
+    kind: metric
+    aliases: [영업이익, 이익, 수익]
+    aggregation: sum
+    formula: supply_amount - supply_cost - delivery_fee - ad_cost - extra_cost
+order_statuses:
+  - {code: 0, label: 정상, metrics: "sku_quantity, payment_amount, supply_amount, supply_cost, delivery_fee"}
+  - {code: 1, label: 반품, metrics: "delivery_fee"}
+  - {code: 2, label: 교환, metrics: "supply_cost, delivery_fee"}
+  - {code: 3, label: 취소, metrics: ""}
+  - {code: 5, label: 빈박스, metrics: "delivery_fee"}
+  - {code: 6, label: 증정, metrics: "supply_cost"}
+  - {code: 7, label: 배송, metrics: "delivery_fee"}
+  - {code: 8, label: 광고, metrics: "ad_cost"}
+  - {code: 9, label: 비용, metrics: "extra_cost"}
+notes:
+  - 소분류까지를 대표상품 단위로 보고 세분류는 SKU 단위로 본다.
+  - item_id와 item_seq는 SKU보다 큰 대표상품의 코드와 순번이다.
+  - brand_name은 고정된 목록이 아니므로 새 브랜드를 데이터에서 자동으로 받아들인다.
