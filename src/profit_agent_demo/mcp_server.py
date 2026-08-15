@@ -7,7 +7,7 @@ from .service import AnalyticsService
 
 
 def build_mcp(service: AnalyticsService | None = None) -> FastMCP:
-    service = service or AnalyticsService(load_settings())
+    service = service or AnalyticsService(load_settings(require_api_key=False))
     mcp = FastMCP("profit-agent-demo")
 
     @mcp.tool()

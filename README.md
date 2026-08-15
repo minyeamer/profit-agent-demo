@@ -6,7 +6,7 @@ PostgreSQL의 `profit_daily(start_date, end_date)` 테이블 함수를 자연어
 - 일별·월별 실적 추이
 - 대표상품별 상위 목록
 - 자연어 질문을 구조화된 read-only 분석 도구 호출로 변환
-- Hermes MCP와 독립적인 Streamlit 채팅 UI
+- 제공자 독립 API를 사용하는 Streamlit 채팅 UI
 
 모든 설명과 사용자 안내는 한국어로 작성되어 있습니다.
 
@@ -33,14 +33,16 @@ uv sync
 cp .env.example .env
 ```
 
-`.env`에 자신의 PostgreSQL 설정을 입력합니다. OpenAI-compatible API를 직접 사용할 경우에만 LLM API key를 입력합니다. API key가 없으면 `AGENT_BACKEND=auto` 설정에 따라 Hermes Desktop/CLI의 현재 OAuth 인증을 사용합니다.
+`.env`에 PostgreSQL 설정과 API 제공자 설정을 입력합니다. 채팅 UI는 지정한 API에 직접 요청하며 별도 에이전트 실행 파일이나 OAuth에 의존하지 않습니다.
 
 ```dotenv
-OPENAI_API_KEY=실제_키
-OPENAI_MODEL=gpt-4o-mini
-AGENT_BACKEND=auto
-HERMES_COMMAND=hermes
-HERMES_MAX_TURNS=12
+# OpenAI: API_TYPE=openai, MODEL=gpt-4o-mini
+# NVIDIA: API_TYPE=nvidia, MODEL=nvidia/nemotron-3-ultra-550b-a55b
+API_TYPE=openai
+# API_KEY에는 선택한 제공자의 비밀 키를 입력하세요.
+API_KEY=
+API_BASE_URL=
+MODEL=gpt-4o-mini
 
 PGHOST=your-postgres-host
 PGPORT=5432
@@ -64,21 +66,6 @@ uv run streamlit run src/profit_agent_demo/web_app.py \
 ```
 
 브라우저에서 `http://127.0.0.1:8510`으로 접속합니다.
-
-### 2-1. Hermes에서 실행하고 종료하기
-
-Hermes Desktop에서 이 저장소를 작업 경로로 연 뒤, Hermes의 터미널 도구로 다음 명령을 실행할 수 있습니다. `source .env`를 통해 PostgreSQL 연결 설정을 현재 프로세스에만 주입합니다.
-
-```bash
-env -u PYTHONPATH bash -lc 'set -a; source .env; set +a; exec uv run streamlit run src/profit_agent_demo/web_app.py --server.address=127.0.0.1 --server.port=8510'
-```
-
-Hermes 터미널 도구에서 `background=true`로 실행하면 Streamlit을 백그라운드 서버로 유지할 수 있습니다. 실행 결과의 `session_id`를 기록해 두었다가 종료할 때 Hermes의 process 도구에서 다음과 같이 종료합니다.
-
-```text
-action: kill
-session_id: <Streamlit 실행 결과의 session_id>
-```
 
 일반 터미널에서 실행한 프로세스를 종료해야 한다면 다음 명령을 사용할 수 있습니다.
 
@@ -126,7 +113,7 @@ docker compose -f docker-compose.demo.yml --env-file .env.demo up -d demo-postgr
 curl http://127.0.0.1:8510/_stcore/health
 ```
 
-데모 데이터베이스는 호스트의 `127.0.0.1:15432`에서 접근할 수 있고, Streamlit은 `127.0.0.1:8510`에서 실행됩니다. Streamlit은 호스트의 Hermes CLI/OAuth를 사용해야 하므로 기본 Compose 실행에서는 컨테이너 서비스를 시작하지 않습니다. `profit-agent-demo` 컨테이너 서비스에는 `container` profile이 붙어 있으며, API key 기반으로 별도 실행할 때만 사용할 수 있습니다. 데모용 계정과 비밀번호는 공개 예시값이므로 운영 환경에서 사용하지 마세요.
+데모 데이터베이스는 호스트의 `127.0.0.1:15432`에서 접근할 수 있고, Streamlit은 `127.0.0.1:8510`에서 실행됩니다. 기본 Compose 실행은 PostgreSQL만 시작하고, 호스트에서 `./scripts/run_demo_streamlit.sh`를 실행하면 `.env.demo`의 공통 API 설정으로 채팅 UI를 시작합니다. `profit-agent-demo` 컨테이너 서비스에는 `container` profile이 붙어 있으며, API key를 전달한 경우에만 별도 실행할 수 있습니다. 데모용 계정과 비밀번호는 공개 예시값이므로 운영 환경에서 사용하지 마세요.
 
 초기화 SQL은 다음 의존성 그래프를 재현합니다. 데모 DB에는 `analytics`와 `demo` 스키마만 생성됩니다.
 
@@ -161,7 +148,7 @@ docker compose -f docker-compose.demo.yml --env-file .env.demo down -v
 docker compose -f docker-compose.demo.yml --env-file .env.demo up -d demo-postgres
 ```
 
-`scripts/run_demo_streamlit.sh`는 호스트 Hermes CLI를 자동으로 찾고, Docker PostgreSQL에 맞는 `127.0.0.1:15432` 연결정보를 주입합니다. 따라서 실제 회사용 `.env`를 읽지 않습니다.
+`scripts/run_demo_streamlit.sh`는 Docker PostgreSQL에 맞는 `127.0.0.1:15432` 연결정보와 `.env.demo`의 공통 API 설정을 주입합니다. 따라서 실제 회사용 `.env`를 읽지 않습니다.
 
 ## Streamlit secrets 사용
 
@@ -174,12 +161,10 @@ docker compose -f docker-compose.demo.yml --env-file .env.demo up -d demo-postgr
 예시:
 
 ```toml
-OPENAI_API_KEY = ""
-OPENAI_BASE_URL = ""
-OPENAI_MODEL = "gpt-4o-mini"
-AGENT_BACKEND = "auto"
-HERMES_COMMAND = "hermes"
-HERMES_MAX_TURNS = 12
+API_TYPE = "openai"
+API_KEY = ""
+API_BASE_URL = ""
+MODEL = "gpt-4o-mini"
 PGHOST = "your-postgres-host"
 PGPORT = 5432
 PGDATABASE = "your-database"
@@ -197,12 +182,10 @@ STREAMLIT_BIND_ADDRESS = "127.0.0.1"
 
 | 변수 | 필수 | 설명 |
 |---|---:|---|
-| `OPENAI_API_KEY` | 선택 | `AGENT_BACKEND=openai` 또는 API key가 있는 경우 서버에서 LLM 호출에 사용하는 API key. 없으면 Hermes backend를 사용 |
-| `OPENAI_BASE_URL` | 선택 | OpenAI-compatible API의 기본 URL. 비워 두면 OpenAI 기본 endpoint 사용 |
-| `OPENAI_MODEL` | 선택 | 사용할 모델명. 기본값 `gpt-4o-mini` |
-| `AGENT_BACKEND` | 선택 | `auto`, `openai`, `hermes` 중 하나. 기본값 `auto` |
-| `HERMES_COMMAND` | 선택 | Hermes 실행 파일 경로 또는 명령. 기본값 `hermes` |
-| `HERMES_MAX_TURNS` | 선택 | Hermes의 최대 agent 반복 횟수. 기본값 `12`. 복잡한 분석은 `20` 정도로 높일 수 있음 |
+| `API_TYPE` | 필수 | `openai` 또는 `nvidia`. 제공자의 기본 endpoint·요청 제한 정책을 선택 |
+| `API_KEY` | 필수 | 선택한 API 제공자에 전달하는 비밀 키 |
+| `API_BASE_URL` | 선택 | OpenAI 호환 API의 endpoint 재정의. NVIDIA는 비워 두면 NIM 기본 endpoint 사용 |
+| `MODEL` | 선택 | 제공자별 모델 식별자. OpenAI 기본값은 `gpt-4o-mini`, NVIDIA 기본값은 `nvidia/nemotron-3-ultra-550b-a55b` |
 | `PGHOST` | 필수 | PostgreSQL 호스트명 또는 사설 IP |
 | `PGPORT` | 선택 | PostgreSQL 포트. 기본값 `5432` |
 | `PGDATABASE` | 필수 | 데이터베이스 이름 |
@@ -214,6 +197,8 @@ STREAMLIT_BIND_ADDRESS = "127.0.0.1"
 | `STREAMLIT_BIND_ADDRESS` | 선택 | 문서용 bind address. 실제 실행 시 Streamlit CLI 옵션을 사용 |
 
 `PROFIT_DAILY_FUNCTION`은 SQL identifier injection을 막기 위해 `schema.function` 형식만 허용합니다. 컬럼명, group-by, 지표도 allowlist로 제한하며 LLM이 임의 SQL을 실행하지 않습니다.
+
+NVIDIA를 선택하면 서버는 OpenAI 호환 NIM endpoint를 사용합니다. API가 HTTP 429를 반환하면 정확히 60초 대기하고 다시 요청하며, 최대 세 번 재시도합니다. 이는 분당 40회 제한을 넘겼을 때만 적용됩니다.
 
 ## `profit_daily` 테이블 함수
 
@@ -328,40 +313,6 @@ FROM analytics.profit_daily(
 ### `get_top_products`
 
 대표상품 기준으로 영업이익, 결제금액, 광고비, 지출액 또는 마진금액 상위 목록을 반환합니다.
-
-## Hermes MCP 연결
-
-환경변수가 설정된 터미널에서 패키지를 설치한 뒤 MCP 서버를 등록할 수 있습니다. `profit-agent-demo`를 실제 DB가 아니라 데모 DB에 연결하려면 Hermes Desktop 프로세스에 데모 연결정보를 명시적으로 전달해야 합니다. Streamlit의 환경변수만으로는 이미 실행 중인 Hermes MCP watchdog의 환경이 바뀌지 않습니다.
-
-### 데모 DB용 MCP 등록
-
-기존에 같은 이름의 MCP가 등록되어 있으면 먼저 제거한 뒤 데모 연결정보로 다시 등록합니다.
-
-```bash
-uv sync
-chmod +x scripts/run_mcp.sh
-hermes mcp remove profit-agent-demo
-printf 'Y\\nY\\n' | hermes mcp add profit-agent-demo \\
-  --command "$PWD/scripts/run_mcp.sh" \\
-  --env PGHOST=127.0.0.1 PGPORT=15432 PGDATABASE=profit_demo \\
-        PGUSER=demo_readonly PGPASSWORD=demo_password \\
-        PGSCHEMA=analytics PROFIT_DAILY_FUNCTION=analytics.profit_daily
-hermes mcp test profit-agent-demo
-```
-
-`demo_password`는 로컬 데모 전용 공개 예시값입니다. 실제 DB를 연결할 때는 위 `--env` 값을 사용하지 말고, 별도의 MCP 이름과 secret 환경을 사용하세요. 등록 후에는 Streamlit 대화를 초기화하거나 새로고침해야 새 MCP 프로세스가 사용됩니다.
-
-### 실제 DB용 MCP 등록
-
-실제 DB를 연결할 때는 기존 `.env`를 사용하는 별도 이름을 권장합니다.
-
-```bash
-hermes mcp add profit-agent-real \\
-  --command "$PWD/scripts/run_mcp.sh"
-hermes mcp test profit-agent-real
-```
-
-`scripts/run_mcp.sh`와 환경 파일은 같은 로컬 저장소에서 실행해야 합니다. 비밀번호는 `.env`에만 보관하고 shell history나 Hermes 설정 파일에 직접 기록하지 마세요. 운영 환경에서는 별도 secret manager를 사용하세요.
 
 ## 보안 설계
 

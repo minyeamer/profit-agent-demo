@@ -35,7 +35,8 @@ def test_demo_database_assets_define_csv_backed_demo_contract():
     assert "generate_series" not in loader
     assert "ORIGINAL_${name}" in mcp_script
     assert "127.0.0.1" in streamlit_script
-    assert "AGENT_BACKEND=hermes" in streamlit_script
+    assert "API_TYPE" in streamlit_script
+    assert "API_KEY" in streamlit_script
 
 
 def test_products_distinguish_representative_items_from_skus():
