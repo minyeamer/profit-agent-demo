@@ -8,7 +8,7 @@ import yaml
 
 from .config import Settings
 from .db import Database
-from .query_builder import build_aggregate_query
+from .query_builder import build_aggregate_query, build_top_dimension_trend_query, build_top_product_trend_query, build_trend_query
 
 SCHEMA_PATH = Path(__file__).parents[2] / "semantic_schema.yml"
 
@@ -49,37 +49,42 @@ class AnalyticsService:
         start_date: str,
         end_date: str,
         grain: str = "day",
+        group_by: list[str] | None = None,
         filters: dict[str, Any] | None = None,
+        chart_type: str | None = None,
     ) -> dict[str, Any]:
-        if grain == "day":
-            return self.get_profit_summary(
-                start_date, end_date, ["order_date"],
-                ["payment_amount", "extra_cost", "profit"], filters,
-            ) | {"grain": "day"}
-        if grain != "month":
-            raise ValueError("grain은 day 또는 month여야 합니다")
         start, end = _parse_date_range(start_date, end_date)
-        query = (
-            f"SELECT date_trunc('month', order_date)::date AS period, "
-            f"SUM(payment_amount) AS payment_amount, SUM(extra_cost) AS extra_cost, "
-            f"SUM(profit) AS profit FROM {self.settings.profit_daily_function}(%s, %s)"
+        query, params = build_trend_query(
+            start,
+            end,
+            relation=self.settings.profit_daily_function,
+            grain=grain,
+            group_by=group_by,
+            filters=filters,
         )
-        params: list[Any] = [start, end]
-        clauses = []
-        allowed = {"brand_name", "team_name", "shop_name", "shop_group", "order_status"}
-        for column, value in (filters or {}).items():
-            if column not in allowed:
-                raise ValueError(f"월별 추이에서 허용되지 않은 필터 컬럼: {column}")
-            clauses.append(f'"{column}" = %s')
-            params.append(value)
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " GROUP BY 1 ORDER BY 1 LIMIT 1000"
         rows = self.database.fetch(query, params)
-        return {
+        result = {
             "period": {"start_date": start.isoformat(), "end_date": end.isoformat()},
-            "grain": "month", "row_count": len(rows), "rows": _jsonable(rows),
+            "grain": grain,
+            "group_by": group_by or [],
+            "metrics": ["payment_amount", "extra_cost", "profit"],
+            "filters": filters or {},
+            "row_count": len(rows),
+            "rows": _jsonable(rows),
         }
+        if chart_type is not None:
+            if chart_type not in {"line", "bar", "stacked_bar"}:
+                raise ValueError("지원하지 않는 차트 유형입니다")
+            dimension = (group_by or ["order_date"])[0]
+            labels = {"brand_name": "브랜드", "shop_group": "쇼핑몰 그룹", "shop_name": "판매처"}
+            result["chart"] = {
+                "kind": chart_type,
+                "title": f"{'일별' if grain == 'day' else '월별'} {labels.get(dimension, dimension)}별 결제금액",
+                "x_column": "period",
+                "series_column": dimension,
+                "value_column": "payment_amount",
+            }
+        return result
 
     def get_top_products(
         self,
@@ -101,12 +106,68 @@ class AnalyticsService:
         result["row_count"] = len(result["rows"])
         return result
 
+    def get_top_product_trend(
+        self,
+        start_date: str,
+        end_date: str,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        start, end = _parse_date_range(start_date, end_date)
+        query, params = build_top_product_trend_query(
+            start,
+            end,
+            relation=self.settings.profit_daily_function,
+            metric="payment_amount",
+            limit=limit,
+            filters=filters,
+        )
+        rows = self.database.fetch(query, params)
+        return {
+            "period": {"start_date": start.isoformat(), "end_date": end.isoformat()},
+            "group_by": ["product_name"],
+            "metrics": ["payment_amount"],
+            "filters": filters or {},
+            "row_count": len(rows),
+            "rows": _jsonable(rows),
+            "chart": {
+                "kind": "line",
+                "title": "일별 상위 상품 결제금액",
+                "x_column": "period",
+                "series_column": "product_name",
+                "value_column": "payment_amount",
+            },
+        }
+
+    def get_top_dimension_trend(
+        self, start_date: str, end_date: str, dimension: str, limit: int = 10,
+        filters: dict[str, Any] | None = None, chart_type: str = "line",
+    ) -> dict[str, Any]:
+        start, end = _parse_date_range(start_date, end_date)
+        query, params = build_top_dimension_trend_query(
+            start, end, relation=self.settings.profit_daily_function,
+            dimension=dimension, limit=limit, filters=filters,
+        )
+        rows = _jsonable(self.database.fetch(query, params))
+        if chart_type not in {"line", "bar", "stacked_bar"}:
+            raise ValueError("지원하지 않는 차트 유형입니다")
+        labels = {"shop_group": "쇼핑몰 그룹", "shop_name": "판매처", "brand_name": "브랜드", "team_name": "담당팀"}
+        return {
+            "period": {"start_date": start.isoformat(), "end_date": end.isoformat()},
+            "group_by": [dimension], "metrics": ["payment_amount"], "filters": filters or {},
+            "row_count": len(rows), "rows": rows,
+            "chart": {"kind": chart_type, "title": f"일별 상위 {labels.get(dimension, dimension)} 결제금액",
+                        "x_column": "period", "series_column": dimension, "value_column": "payment_amount"},
+        }
+
     def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         functions = {
             "describe_profit_schema": self.describe_profit_schema,
             "get_profit_summary": self.get_profit_summary,
             "get_profit_trend": self.get_profit_trend,
             "get_top_products": self.get_top_products,
+            "get_top_product_trend": self.get_top_product_trend,
+            "get_top_dimension_trend": self.get_top_dimension_trend,
         }
         if name not in functions:
             raise ValueError(f"허용되지 않은 분석 도구입니다: {name}")
@@ -139,6 +200,8 @@ def tool_definitions() -> list[dict[str, Any]]:
     return [
         {"type": "function", "function": {"name": "describe_profit_schema", "description": "profit_daily의 컬럼, 회사 용어, 계산식, 주문상태를 설명합니다.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}},
         {"type": "function", "function": {"name": "get_profit_summary", "description": "기간별 profit_daily 지표를 차원별로 집계합니다. 날짜는 양 끝을 포함합니다.", "parameters": {"type": "object", "properties": {"start_date": {"type": "string"}, "end_date": {"type": "string"}, "group_by": {"type": "array", "items": {"type": "string"}}, "metrics": {"type": "array", "items": {"type": "string"}}, "filters": {"type": "object", "additionalProperties": True}}, "required": ["start_date", "end_date"], "additionalProperties": False}}},
-        {"type": "function", "function": {"name": "get_profit_trend", "description": "일별 또는 월별 결제금액·지출액·영업이익 추이를 반환합니다.", "parameters": {"type": "object", "properties": {"start_date": {"type": "string"}, "end_date": {"type": "string"}, "grain": {"type": "string", "enum": ["day", "month"]}, "filters": {"type": "object", "additionalProperties": True}}, "required": ["start_date", "end_date"], "additionalProperties": False}}},
+        {"type": "function", "function": {"name": "get_profit_trend", "description": "일별 또는 월별 결제금액·지출액·영업이익 추이를 반환합니다. 사용자가 그래프를 요청하면 chart_type을 line, bar, stacked_bar 중 의미에 맞게 지정합니다. stacked_bar는 차원별 매출 비중을 비교할 때 사용합니다.", "parameters": {"type": "object", "properties": {"start_date": {"type": "string"}, "end_date": {"type": "string"}, "grain": {"type": "string", "enum": ["day", "month"]}, "group_by": {"type": "array", "items": {"type": "string"}, "maxItems": 1}, "filters": {"type": "object", "additionalProperties": True}, "chart_type": {"type": "string", "enum": ["line", "bar", "stacked_bar"]}}, "required": ["start_date", "end_date"], "additionalProperties": False}}},
         {"type": "function", "function": {"name": "get_top_products", "description": "대표상품 기준으로 지정 지표의 상위 상품을 반환합니다.", "parameters": {"type": "object", "properties": {"start_date": {"type": "string"}, "end_date": {"type": "string"}, "metric": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}, "filters": {"type": "object", "additionalProperties": True}}, "required": ["start_date", "end_date"], "additionalProperties": False}}},
+        {"type": "function", "function": {"name": "get_top_product_trend", "description": "기간 전체 결제금액 상위 대표상품의 일별 결제금액 추이를 반환합니다. 상위 상품의 일별 그래프 요청에 사용합니다.", "parameters": {"type": "object", "properties": {"start_date": {"type": "string"}, "end_date": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}, "filters": {"type": "object", "additionalProperties": True}}, "required": ["start_date", "end_date"], "additionalProperties": False}}},
+        {"type": "function", "function": {"name": "get_top_dimension_trend", "description": "반드시 사용자가 상위 N개를 명시했을 때만 사용합니다. 지정 차원의 기간 전체 결제금액 상위 항목에 대한 일별 추이를 반환합니다. 상위 N이 없는 일반 브랜드·판매처 추이는 get_profit_trend를 사용하세요.", "parameters": {"type": "object", "properties": {"start_date": {"type": "string"}, "end_date": {"type": "string"}, "dimension": {"type": "string", "enum": ["brand_name", "shop_group", "shop_name", "team_name", "category_name1", "category_name2", "category_name3", "category_name4"]}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}, "filters": {"type": "object", "additionalProperties": True}, "chart_type": {"type": "string", "enum": ["line", "bar", "stacked_bar"]}}, "required": ["start_date", "end_date", "dimension", "limit"], "additionalProperties": False}}},
     ]

@@ -3,7 +3,12 @@ from datetime import date
 import pytest
 import yaml
 
-from profit_agent_demo.query_builder import build_aggregate_query
+from profit_agent_demo.query_builder import (
+    build_aggregate_query,
+    build_top_dimension_trend_query,
+    build_top_product_trend_query,
+    build_trend_query,
+)
 
 
 SCHEMA = yaml.safe_load(open("semantic_schema.yml", encoding="utf-8"))
@@ -34,6 +39,50 @@ def test_query_builder_aggregates_by_brand_without_hardcoded_brand_filter():
     assert 'SUM("ad_cost") AS "ad_cost"' in query
     assert 'SUM("extra_cost") AS "extra_cost"' in query
     assert params == [date(2026, 7, 1), date(2026, 7, 31)]
+
+
+def test_monthly_trend_query_can_group_by_brand_with_bound_dates():
+    query, params = build_trend_query(
+        date(2026, 1, 1),
+        date(2026, 7, 31),
+        relation="demo_schema.profit_daily",
+        grain="month",
+        group_by=["brand_name"],
+    )
+
+    assert "date_trunc('month', order_date)::date AS period" in query
+    assert '"brand_name"' in query
+    assert "GROUP BY 1, 2 ORDER BY 1, 2 LIMIT 1000" in query
+    assert params == [date(2026, 1, 1), date(2026, 7, 31)]
+
+
+def test_top_dimension_daily_trend_query_supports_shop_name():
+    query, params = build_top_dimension_trend_query(
+        date(2026, 7, 1), date(2026, 7, 31),
+        relation="demo_schema.profit_daily", dimension="shop_name", limit=5,
+    )
+
+    assert 'SELECT "shop_name"' in query
+    assert 'source."shop_name"' in query
+    assert 'SUM(source."payment_amount") AS "payment_amount"' in query
+    assert params == [date(2026, 7, 1), date(2026, 7, 31), 5, date(2026, 7, 1), date(2026, 7, 31)]
+
+
+def test_top_product_daily_trend_query_selects_top_products_before_time_series():
+    query, params = build_top_product_trend_query(
+        date(2026, 7, 1),
+        date(2026, 7, 31),
+        relation="demo_schema.profit_daily",
+        metric="payment_amount",
+        limit=10,
+    )
+
+    assert "WITH top_products AS" in query
+    assert 'ORDER BY SUM("payment_amount") DESC LIMIT %s' in query
+    assert 'AS period' in query
+    assert 'SUM(source."payment_amount") AS "payment_amount"' in query
+    assert "LIMIT 1000" in query
+    assert params == [date(2026, 7, 1), date(2026, 7, 31), 10, date(2026, 7, 1), date(2026, 7, 31)]
 
 
 def test_query_builder_rejects_unknown_identifiers_and_long_ranges():

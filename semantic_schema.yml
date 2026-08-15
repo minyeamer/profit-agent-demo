@@ -58,15 +58,15 @@ fields:
   shop_id:
     display_name: 판매처코드
     kind: dimension
-    aliases: [판매처코드, 판매처 코드]
+    aliases: [판매처코드, 판매처 코드, shop id, seller id]
   shop_group:
     display_name: 쇼핑몰 그룹
     kind: dimension
-    aliases: [쇼핑몰, 쇼핑몰 그룹]
+    aliases: [쇼핑몰, 쇼핑몰 그룹, mall, mall group, shop group]
   shop_name:
-    display_name: 채널
+    display_name: 판매처
     kind: dimension
-    aliases: [판매처, 채널, 쇼핑몰명]
+    aliases: [판매처, 판매처명, 채널, 쇼핑몰명, shop, shop name, seller, channel]
   order_status:
     display_name: 주문상태
     kind: dimension

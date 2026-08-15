@@ -1028,8 +1028,10 @@ name = "profit-agent-demo"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "altair" },
     { name = "mcp" },
     { name = "openai" },
+    { name = "pandas" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pyyaml" },
     { name = "streamlit" },
@@ -1042,8 +1044,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "altair", specifier = ">=5.0.0" },
     { name = "mcp", specifier = ">=1.2.0,<2.0.0" },
     { name = "openai", specifier = ">=1.60.0" },
+    { name = "pandas", specifier = ">=2.2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "streamlit", specifier = ">=1.40.0" },

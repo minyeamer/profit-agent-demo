@@ -26,6 +26,10 @@ export STREAMLIT_PORT="${STREAMLIT_PORT:-8510}"
 : "${API_KEY:?API_KEY를 설정하세요.}"
 : "${MODEL:?MODEL을 설정하세요.}"
 
+# Fail before starting Streamlit if the UI module or chart renderer cannot be imported.
+env -u PYTHONPATH uv run python -c 'from profit_agent_demo.web_app import build_stacked_bar_chart; assert callable(build_stacked_bar_chart)' \
+  || { echo "Streamlit UI import preflight failed" >&2; exit 1; }
+
 exec env -u PYTHONPATH uv run streamlit run src/profit_agent_demo/web_app.py \
   --server.address="${STREAMLIT_BIND_ADDRESS}" \
   --server.port="${STREAMLIT_PORT}"
