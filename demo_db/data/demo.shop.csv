@@ -1,0 +1,7 @@
+shop_seq,shop_id,shop_alias,shop_name,corp_name,shop_group,shop_url,scm_url,commission_rate
+1,200001,스마트스토어,스마트스토어,데모 유통,오픈마켓,https://smartstore.naver.com,,0.03500
+2,200002,쿠팡,쿠팡,데모 유통,오픈마켓,https://www.coupang.com,,0.04000
+3,200003,11번가,11번가,데모 유통,오픈마켓,https://www.11st.co.kr,,0.03800
+4,200004,G마켓,G마켓,데모 유통,오픈마켓,https://www.gmarket.co.kr,,0.04200
+5,200005,옥션,옥션,데모 유통,오픈마켓,https://www.auction.co.kr,,0.04200
+6,200006,카카오톡 선물하기,카카오톡 선물하기,데모 유통,선물,https://gift.kakao.com,,0.05000

@@ -1,4 +1,5 @@
 .env
+.env.demo
 .streamlit/secrets.toml
 .venv/
 __pycache__/

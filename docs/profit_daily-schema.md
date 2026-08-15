@@ -2,6 +2,19 @@
 
 이 문서는 공개 데모가 기대하는 일반화된 테이블 함수 계약입니다. 특정 회사의 실제 스키마 문서가 아니며, 실제 데이터베이스에 적용할 때는 자신의 반환 컬럼과 계산 규칙을 검증해야 합니다.
 
+데모 PostgreSQL은 결과 테이블을 미리 저장하는 방식이 아니라 `analytics.profit_daily` 테이블 함수와 `analytics.profit_base` 테이블 함수를 만들고, 다음 소스 계층을 조회하도록 구성되어 있습니다. 데모는 `analytics`와 `demo` 스키마만 생성합니다.
+
+```text
+analytics.profit_daily
+  ├─ analytics.profit_base
+  │    ├─ demo.sales_daily
+  │    └─ demo.extra_profit
+  ├─ demo.product
+  └─ demo.shop
+```
+
+`demo_db/data/*.csv`는 공개 검토 가능한 정적 합성 데이터이고, `demo_db/002_load.sql`이 PostgreSQL `COPY`로 적재합니다. CSV는 실제 운영 행·식별자·브랜드·상품·판매처 목록을 포함하지 않습니다.
+
 ## 호출 계약
 
 ```sql
@@ -18,7 +31,7 @@ FROM schema.profit_daily(
 
 | 컬럼 | 표시명 | 유형 | 분석 의미 |
 |---|---|---|---|
-| `product_id` | 상품코드 | 차원 | SKU 또는 상품코드 |
+| `product_id` | 상품코드 | 차원 | 색상·구성까지 구분하는 SKU 코드 |
 | `item_id` | 대표상품코드 | 차원 | 여러 SKU를 묶는 대표상품코드 |
 | `item_seq` | 순번 | 차원 | 대표상품 내 순번 |
 | `team_name` | 담당팀 | 차원 | 상품 또는 판매를 담당하는 조직 |
@@ -26,8 +39,8 @@ FROM schema.profit_daily(
 | `category_name1` | 대분류 | 차원 | 가장 상위 상품 분류 |
 | `category_name2` | 중분류 | 차원 | 대분류 하위 분류 |
 | `category_name3` | 소분류 | 차원 | 대표상품 분석에 자주 사용하는 분류 |
-| `category_name4` | 세분류 | 차원 | SKU 수준의 세부 분류 |
-| `color` | 색상 | 차원 | 상품 색상 |
+| `category_name4` | 세분류 | 차원 | 단품·세트·포장 수량 등 SKU 구성. 없으면 `NULL` |
+| `color` | 색상 | 차원 | SKU 색상. 없으면 `NULL` |
 | `product_name` | 상품명 | 차원 | 상품 이름 |
 | `category_unit_name` | 단위상품명 | 차원 | 단위 또는 구성 정보가 포함된 상품명 |
 | `shop_id` | 판매처코드 | 차원 | 판매처 코드 |
@@ -48,7 +61,7 @@ FROM schema.profit_daily(
 
 ## 계층과 집계 단위
 
-- `item_id`와 `item_seq`는 대표상품 수준의 코드와 순번입니다.
+- `item_id`와 `item_seq`는 대표상품 수준의 코드와 순번이며, 여러 `product_id`가 하나의 `item_id`에 속할 수 있습니다.
 - `category_name3`까지는 대표상품 단위 분석에 활용할 수 있습니다.
 - `category_name4`, `product_id`, `color`는 SKU 단위 분석에 적합합니다.
 - `shop_id`는 판매처코드이고 `shop_name`은 사람이 읽는 채널명입니다.

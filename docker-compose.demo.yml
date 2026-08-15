@@ -1,0 +1,42 @@
+services:
+  demo-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: profit_demo
+      POSTGRES_USER: demo_readonly
+      POSTGRES_PASSWORD: demo_password
+    ports:
+      - "15432:5432"
+    volumes:
+      - demo-postgres-data-v2:/var/lib/postgresql/data
+      - ./demo_db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo_readonly -d profit_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  profit-agent-demo:
+    profiles: ["container"]
+    build: .
+    env_file:
+      - .env.demo
+    environment:
+      PGHOST: demo-postgres
+      PGPORT: "5432"
+      PGDATABASE: profit_demo
+      PGUSER: demo_readonly
+      PGPASSWORD: demo_password
+      PGSCHEMA: analytics
+      PROFIT_DAILY_FUNCTION: analytics.profit_daily
+      STREAMLIT_PORT: "8510"
+      STREAMLIT_BIND_ADDRESS: 0.0.0.0
+    ports:
+      - "8510:8510"
+    depends_on:
+      demo-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  demo-postgres-data-v2:

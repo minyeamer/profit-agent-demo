@@ -2,8 +2,6 @@
 
 PostgreSQL의 `profit_daily(start_date, end_date)` 테이블 함수를 자연어로 조회하는 작은 테스트용 분석 에이전트입니다.
 
-이 저장소는 특정 회사의 운영 코드나 실제 데이터를 공개하는 프로젝트가 아닙니다. 다른 사람이 자신의 `profit_daily` 호환 데이터에 연결해 다음을 실험할 수 있는 공개 데모입니다.
-
 - 매출·정산금액·마진금액·영업이익 요약
 - 일별·월별 실적 추이
 - 대표상품별 상위 목록
@@ -117,6 +115,54 @@ docker compose down
 
 Docker Desktop에서는 컨테이너가 호스트 VPN 경로를 자동으로 사용할 수 없을 수 있습니다. 이 경우 VPN이 연결된 호스트에서 Streamlit을 직접 실행하세요.
 
+### 4. 누구나 실행할 수 있는 데모 PostgreSQL
+
+가상 식품 유통 데이터와 PostgreSQL 초기화 구성을 제공합니다. 실제 `.env`는 건드리지 않고 데모 설정을 별도 파일로 사용합니다.
+
+```bash
+cp .env.demo.example .env.demo
+docker compose -f docker-compose.demo.yml --env-file .env.demo up -d demo-postgres
+./scripts/run_demo_streamlit.sh
+curl http://127.0.0.1:8510/_stcore/health
+```
+
+데모 데이터베이스는 호스트의 `127.0.0.1:15432`에서 접근할 수 있고, Streamlit은 `127.0.0.1:8510`에서 실행됩니다. Streamlit은 호스트의 Hermes CLI/OAuth를 사용해야 하므로 기본 Compose 실행에서는 컨테이너 서비스를 시작하지 않습니다. `profit-agent-demo` 컨테이너 서비스에는 `container` profile이 붙어 있으며, API key 기반으로 별도 실행할 때만 사용할 수 있습니다. 데모용 계정과 비밀번호는 공개 예시값이므로 운영 환경에서 사용하지 마세요.
+
+초기화 SQL은 다음 의존성 그래프를 재현합니다. 데모 DB에는 `analytics`와 `demo` 스키마만 생성됩니다.
+
+```text
+analytics.profit_daily(start_date, end_date)
+  └─ analytics.profit_base(start_date, end_date)
+       ├─ demo.sales_daily
+       └─ demo.extra_profit
+  ├─ demo.product
+  └─ demo.shop
+```
+
+`demo_db/data/`에는 PostgreSQL이 그대로 읽는 정적 CSV 파일이 있습니다.
+
+| 파일 | 적재 테이블 | 내용 |
+|---|---|---|
+| `demo.sales_daily.csv` | `demo.sales_daily` | 2025-08-01~2026-07-31의 판매 일별 합성 실적 |
+| `demo.extra_profit.csv` | `demo.extra_profit` | 월별 조정 이익 |
+| `demo.product.csv` | `demo.product` | 5개 합성 브랜드, 대표상품 90개·SKU 125개 |
+| `demo.shop.csv` | `demo.shop` | 실제 공개 판매 채널명 기반의 데모 판매처 |
+
+`demo_db/002_load.sql`은 이 파일들을 PostgreSQL `COPY`로 일괄 적재합니다. init 과정에서 난수·반복문·`generate_series`·수식 기반 데이터 생성을 하지 않습니다. CSV를 갱신해야 할 때만 개발용 스크립트 `uv run python scripts/generate_demo_csv.py`를 실행하고, 생성된 파일을 검토합니다.
+
+브랜드별 월평균 결제금액과 대표상품 수는 솔담건강 약 10억 원(50개), 한결웰빙 약 3억 원(20개), 루미에르홈 약 1억 원(10개), 들꽃찬 약 8천만 원(5개), 모노에어 약 5천만 원(5개)입니다. 식품팀은 영양제·건강기능식품이 아닌 일반식품만 취급합니다. 가전팀은 색상과 구성에 따라 루미에르홈 30개, 모노에어 20개의 SKU를 둡니다. 월별·요일별 편차와 데이터 형태는 원격 데이터의 팀 단위 집계 패턴만 정규화해 반영했으며, 실제 행·식별자·브랜드·상품·판매처 목록은 복사하지 않았습니다.
+
+`item_id`는 대표상품, `product_id`는 색상·포장 구성까지 구분한 SKU입니다. `category_name4`는 `단품`, `본품+소모품`, `2개 세트`처럼 SKU 구성을 구분할 때만 사용하며 해당 정보가 없는 일반식품은 `NULL`로 적재합니다. `color`도 값이 없는 식품은 `NULL`이고 가전 SKU에만 실제 색상값을 둡니다. 판매수량은 정수이며, 정상 판매의 결제금액은 SKU별 정상가 또는 제한적인 행사 단가에 수량을 곱해 계산합니다.
+
+SQL 또는 CSV 파일을 변경한 뒤 기존 PostgreSQL volume에 이미 초기화된 데이터가 있으면 init script가 다시 실행되지 않습니다. 데모 데이터를 처음부터 재생성할 때만 다음 명령으로 데모 volume을 삭제하세요.
+
+```bash
+docker compose -f docker-compose.demo.yml --env-file .env.demo down -v
+docker compose -f docker-compose.demo.yml --env-file .env.demo up -d demo-postgres
+```
+
+`scripts/run_demo_streamlit.sh`는 호스트 Hermes CLI를 자동으로 찾고, Docker PostgreSQL에 맞는 `127.0.0.1:15432` 연결정보를 주입합니다. 따라서 실제 회사용 `.env`를 읽지 않습니다.
+
 ## Streamlit secrets 사용
 
 `.env` 대신 Streamlit secrets를 사용할 수도 있습니다. 파일을 생성합니다.
@@ -198,7 +244,7 @@ FROM analytics.profit_daily(
 
 분석 기준이나 필터로 사용할 수 있습니다.
 
-- `product_id`: SKU 또는 상품코드
+- `product_id`: 색상·구성까지 구분하는 SKU 상품코드
 - `item_id`, `item_seq`: 대표상품코드와 순번
 - `team_name`: 담당 조직 또는 팀
 - `brand_name`: 브랜드명
@@ -212,7 +258,7 @@ FROM analytics.profit_daily(
 - `order_status`: 주문 상태 코드
 - `order_date`: 일자별 추이 기준 날짜
 
-일반적인 상품 분석에서는 `category_name3`까지를 대표상품 수준으로 보고 `category_name4`를 SKU 수준으로 볼 수 있습니다. 실제 데이터 모델이 다르면 `semantic_schema.yml`을 자신의 규칙에 맞게 수정해야 합니다.
+일반적인 상품 분석에서는 `item_id`와 `category_name3`까지를 대표상품 수준으로 보고 `product_id`, `category_name4`, `color`를 SKU 수준으로 봅니다. SKU 세분 정보가 없으면 `category_name4`와 `color`는 `NULL`입니다. 실제 데이터 모델이 다르면 `semantic_schema.yml`을 자신의 규칙에 맞게 수정해야 합니다.
 
 #### 수량 컬럼
 
@@ -285,20 +331,37 @@ FROM analytics.profit_daily(
 
 ## Hermes MCP 연결
 
-환경변수가 설정된 터미널에서 패키지를 설치한 뒤 MCP 서버를 등록할 수 있습니다. 저장소의 `scripts/run_mcp.sh`가 로컬 `.env`를 읽으므로 비밀번호를 Hermes 명령 인자로 직접 넣지 않아도 됩니다.
+환경변수가 설정된 터미널에서 패키지를 설치한 뒤 MCP 서버를 등록할 수 있습니다. `profit-agent-demo`를 실제 DB가 아니라 데모 DB에 연결하려면 Hermes Desktop 프로세스에 데모 연결정보를 명시적으로 전달해야 합니다. Streamlit의 환경변수만으로는 이미 실행 중인 Hermes MCP watchdog의 환경이 바뀌지 않습니다.
+
+### 데모 DB용 MCP 등록
+
+기존에 같은 이름의 MCP가 등록되어 있으면 먼저 제거한 뒤 데모 연결정보로 다시 등록합니다.
 
 ```bash
 uv sync
 chmod +x scripts/run_mcp.sh
-hermes mcp add profit-agent-demo \
-  --command "$PWD/scripts/run_mcp.sh"
-```
-
-`scripts/run_mcp.sh`와 `.env`는 같은 로컬 저장소에서 실행해야 합니다. 비밀번호는 `.env`에만 보관하고 shell history나 Hermes 설정 파일에 직접 기록하지 마세요. 운영 환경에서는 별도 secret manager를 사용하세요. 등록 후 MCP 도구 discovery를 확인합니다.
-
-```bash
+hermes mcp remove profit-agent-demo
+printf 'Y\\nY\\n' | hermes mcp add profit-agent-demo \\
+  --command "$PWD/scripts/run_mcp.sh" \\
+  --env PGHOST=127.0.0.1 PGPORT=15432 PGDATABASE=profit_demo \\
+        PGUSER=demo_readonly PGPASSWORD=demo_password \\
+        PGSCHEMA=analytics PROFIT_DAILY_FUNCTION=analytics.profit_daily
 hermes mcp test profit-agent-demo
 ```
+
+`demo_password`는 로컬 데모 전용 공개 예시값입니다. 실제 DB를 연결할 때는 위 `--env` 값을 사용하지 말고, 별도의 MCP 이름과 secret 환경을 사용하세요. 등록 후에는 Streamlit 대화를 초기화하거나 새로고침해야 새 MCP 프로세스가 사용됩니다.
+
+### 실제 DB용 MCP 등록
+
+실제 DB를 연결할 때는 기존 `.env`를 사용하는 별도 이름을 권장합니다.
+
+```bash
+hermes mcp add profit-agent-real \\
+  --command "$PWD/scripts/run_mcp.sh"
+hermes mcp test profit-agent-real
+```
+
+`scripts/run_mcp.sh`와 환경 파일은 같은 로컬 저장소에서 실행해야 합니다. 비밀번호는 `.env`에만 보관하고 shell history나 Hermes 설정 파일에 직접 기록하지 마세요. 운영 환경에서는 별도 secret manager를 사용하세요.
 
 ## 보안 설계
 
