@@ -8,19 +8,9 @@ PostgreSQL의 `profit_daily(start_date, end_date)` 테이블 함수를 자연어
 - 자연어 질문을 구조화된 read-only 분석 도구 호출로 변환
 - 제공자 독립 API를 사용하는 Streamlit 채팅 UI
 
-모든 설명과 사용자 안내는 한국어로 작성되어 있습니다.
+https://github.com/user-attachments/assets/832cb5f2-88c6-433d-904f-c2c3ae913679
 
-## 주의: 공개 저장소에 비밀값을 넣지 마세요
-
-다음 값은 절대 커밋하지 않습니다.
-
-- PostgreSQL host, database, user, password
-- LLM API key 또는 사내 OpenAI-compatible endpoint
-- VPN 주소·인증정보
-- 실제 브랜드명, 실제 상품명, 실제 조회 결과
-- 실제 스키마가 공개되면 안 되는 내부 식별자
-
-`.env`와 `.streamlit/secrets.toml`은 `.gitignore`에 포함되어 있습니다. 저장소에는 설정 이름과 형식만 담은 `.env.example`을 제공합니다.
+https://github.com/user-attachments/assets/41eb26d0-bd33-4d70-87e9-50df04e117e3
 
 ## 빠른 시작
 
